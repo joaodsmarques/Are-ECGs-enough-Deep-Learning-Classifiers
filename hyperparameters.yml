@@ -1,0 +1,61 @@
+# The hyperparameters for all the code should be placed her
+
+# Hyperparameters related to the run
+lr: 0.0001
+epochs: 50
+batch_size: 64
+seed: 20
+save_model: True
+path_to_pth_file: path_to_save_files
+n_workers: 8
+pin_memory: True
+prefetch_factor: 4
+
+#Loss, metrics and scheduler
+#This is the order for 5 classes
+criterion: focal_loss
+pos_weight: none #ptbxl diagnostic [2,4,2,1,2] hsm [3]
+scheduler: none
+scheduler_gamma: 0.1
+scheduler_step: 20
+class_threshold: 0.5
+focal_loss_alpha: 0.7
+focal_loss_gamma: 2
+
+
+#dataset
+dataset: ptbxl
+ptbxl_test_fold: 10
+cpsc_test_fold: 8
+
+#otbxl parameters
+set: diagnostic
+subset: superclass
+
+#ECG hyperparameters
+n_leads: 12
+ecg_len: 2048
+max_ecg_len: 5000
+norm: zscore
+pre_process: bandpass
+data_aug: True
+
+#Model choice hyperparameters
+model_type: attresnet
+submodel: none
+dropout: 0.5
+resnet_type: resnet18
+reduction: mean
+
+#RNN setup
+rnn_layers: 2
+rnn_hidden_size: 256
+rnn_dropout: 0.1
+bidirectional: False
+
+#Transformer setup
+enc_dropout: 0.1
+num_heads: 4
+enc_num_layers: 2
+embed_dim: 256
+enc_feature_extracture: resnet18
