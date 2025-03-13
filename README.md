@@ -4,15 +4,21 @@ This repository presents the original implementation of the paper [Are ECGs enou
 ## Overview 📚
 When we face a new problem related to anomaly cardiac detection, there are multiple questions related to the choice of the best networks, the minimum size of a dataset, what results to expect from a setting, what is the best signal length and normalization... In this study, we try to address some of these questions, while demonstrating that transfer learning is very useful in small imbalanced dataset settings. We investigate the performance of multiple neural network architectures in order to assess the impact of various approaches. Moreover, we check whether these practices enhance model generalization when transfer learning is used by pre-training in PTB-XL and CPSC18 and demonstrating our results through a smaller, more challenging dataset for pulmonary embolism (PE) detection. By leveraging transfer learning, we analyze the extent to which we can improve learning efficiency and predictive performance on limited data. 
 
-### Pipeline:
+## Pipeline 🧪
+
+The pipeline follows the settings in 'hyperparameters.yml'. For denoising the ECGs you can choose ""
 
 ![GitHub Logo](images/pipeline.png)
 
 ## Datasets
 
-We use 3 datasets for this research:
+We use 3 datasets for this research [PTB-XL](https://physionet.org/content/ptb-xl/1.0.3/), [CPSC-2018](http://2018.icbeb.org/Challenge.html) and [PE-HSM](https://doi.org/10.1016/j.repc.2023.03.016). you can run them by changing 'dataset' parameter to 'ptbxl', 'cpsc18' or 'hsm'.
 
 ![GitHub Logo](images/datasets.png)
+
+## How to run
+
+You need to define your hyperparameters.yml, past the path in the script and should run 'python ecg_classification_main.py'. Scripts with optuna and wandb tags are variants of this file for running with [WandB](https://wandb.ai) or [Optuna](https://optuna.org/).
 
 ## Citation 💬
 If you find this work useful, please consider citing our paper:
