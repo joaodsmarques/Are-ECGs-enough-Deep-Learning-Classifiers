@@ -23,6 +23,8 @@ We use 3 datasets for this research [PTB-XL](https://physionet.org/content/ptb-x
 
 ![GitHub Logo](images/datasets.png)
 
+
+Although the paper did not explore the PTB-XL dataset for the sub-class, form or rhythm problems, you can run this code for those tasks by setting the `set` to either 'diagnostic', 'form' or 'rhythm' and the `subset` to 'superclass', 'subclass' or 'all'. Note that the `subset` is only used for the diagnostic problem, not for `rhythm` or `form`.
 ## How to run 💻
 
 You need to define your hyperparameters.yml, paste the correspondent path in the script and should run `python ecg_classification_main.py`. Scripts with optuna and wandb tags are variants of this file for running with [WandB](https://wandb.ai) or [Optuna](https://optuna.org/).
