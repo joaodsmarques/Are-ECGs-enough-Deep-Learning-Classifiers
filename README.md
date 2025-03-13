@@ -7,9 +7,13 @@ When we face a new problem related to anomaly cardiac detection, there are multi
 ## Pipeline 🧪
 
 The pipeline follows the settings in `hyperparameters.yml`: 
-- `Denoising`: 'default' (wavelet decomposition with low pass filter), 'bandpass' or 'none';
-- `Normalization`: 'none', 'minmax', 'zscore', 'rscal', 'logscal' or 'l2';
+- `pre_process`: denoising/preprocessing 'default' (wavelet decomposition with low pass filter), 'bandpass' or 'none';
+- `norm`: normalization can be 'none', 'minmax', 'zscore', 'rscal', 'logscal' or 'l2';
 - `Model`: You can choose a family `model_type` (e.g 'vgg') and a `submodel` (e.g. '16').
+- `n_leads`: Number of leads your data has (e.g. '12')
+- `ecg_len`: Length of the signal you want to pick
+- `max_ecg_len`: the length all the signals must have.
+- `data_aug`: `True` if you want to apply data augmentation, `False` otherwise.
 
 ![GitHub Logo](images/pipeline.png)
 
