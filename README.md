@@ -25,7 +25,7 @@ We use 3 datasets for this research [PTB-XL](https://physionet.org/content/ptb-x
 
 ## How to run 💻
 
-You need to define your hyperparameters.yml, paste the correspondent in the script and should run `python ecg_classification_main.py`. Scripts with optuna and wandb tags are variants of this file for running with [WandB](https://wandb.ai) or [Optuna](https://optuna.org/).
+You need to define your hyperparameters.yml, paste the correspondent path in the script and should run `python ecg_classification_main.py`. Scripts with optuna and wandb tags are variants of this file for running with [WandB](https://wandb.ai) or [Optuna](https://optuna.org/).
 
 The file `utils.py` contains all the auxiliar code.
 
