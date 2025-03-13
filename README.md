@@ -6,19 +6,24 @@ When we face a new problem related to anomaly cardiac detection, there are multi
 
 ## Pipeline 🧪
 
-The pipeline follows the settings in 'hyperparameters.yml'. For denoising the ECGs you can choose ""
+The pipeline follows the settings in `hyperparameters.yml`: 
+- `Denoising`: 'default' (wavelet decomposition with low pass filter), 'bandpass' or 'none';
+- `Normalization`: 'none', 'minmax', 'zscore', 'rscal', 'logscal' or 'l2';
+- `Model`: You can choose a family `model_type` (e.g 'vgg') and a `submodel` (e.g. '16').
 
 ![GitHub Logo](images/pipeline.png)
 
-## Datasets
+## Datasets 📝
 
-We use 3 datasets for this research [PTB-XL](https://physionet.org/content/ptb-xl/1.0.3/), [CPSC-2018](http://2018.icbeb.org/Challenge.html) and [PE-HSM](https://doi.org/10.1016/j.repc.2023.03.016). you can run them by changing 'dataset' parameter to 'ptbxl', 'cpsc18' or 'hsm'.
+We use 3 datasets for this research [PTB-XL](https://physionet.org/content/ptb-xl/1.0.3/), [CPSC-2018](http://2018.icbeb.org/Challenge.html) and [PE-HSM](https://doi.org/10.1016/j.repc.2023.03.016). you can run them by changing `dataset` parameter to 'ptbxl', 'cpsc18' or 'hsm'.
 
 ![GitHub Logo](images/datasets.png)
 
-## How to run
+## How to run 💻
 
-You need to define your hyperparameters.yml, past the path in the script and should run 'python ecg_classification_main.py'. Scripts with optuna and wandb tags are variants of this file for running with [WandB](https://wandb.ai) or [Optuna](https://optuna.org/).
+You need to define your hyperparameters.yml, past the path in the script and should run `python ecg_classification_main.py`. Scripts with optuna and wandb tags are variants of this file for running with [WandB](https://wandb.ai) or [Optuna](https://optuna.org/).
+
+The file `utils.py` contains all the auxiliar code.
 
 ## Citation 💬
 If you find this work useful, please consider citing our paper:
