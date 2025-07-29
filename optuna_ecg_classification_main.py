@@ -73,6 +73,8 @@ def train_1_epoch(model, optimizer, criterion, train_loader, device):
         loss.backward()
         optimizer.step() # Does the update
 
+        #If a scheduler was chosen, step it
+
         #Add batch loss to
         epoch_loss.append(loss.item())
 
@@ -149,12 +151,12 @@ def objective(trial, config, args):
 
     #Defining optuna parameters to optimize
     config['lr'] = trial.suggest_float("lr", 1e-6, 1e-2, log=True)
-    config['norm'] = trial.suggest_categorical("normalization", ["minmax","zscore", "rscal", "logscal", "l2"])
+    config['norm'] = trial.suggest_categorical("normalization", ["minmax","zscore", "l2"])
     
-    config['rnn_layers'] = trial.suggest_categorical("rnn_layers", [1, 2, 4])
-    config['rnn_hidden_size'] = trial.suggest_categorical("rnn_hidden_size", [128, 256, 512])
-    config['rnn_dropout'] = trial.suggest_categorical("rnn_dropout", [0, 0.1, 0.3])
-    config['bidirectional'] = trial.suggest_categorical("bidirectional", [True, False])
+    #config['rnn_layers'] = trial.suggest_categorical("rnn_layers", [1, 2, 4])
+    #config['rnn_hidden_size'] = trial.suggest_categorical("rnn_hidden_size", [128, 256, 512])
+    #config['rnn_dropout'] = trial.suggest_categorical("rnn_dropout", [0, 0.1, 0.3])
+    #config['bidirectional'] = trial.suggest_categorical("bidirectional", [True, False])
     
 
     print('Starting...')
@@ -216,21 +218,65 @@ def objective(trial, config, args):
     # Transfer model to gpu
     if torch.cuda.is_available():
         model.to(args.device)
-    
+
     #Loss and optimizer definitions
-    optimizer = torch.optim.AdamW(model.parameters(), config["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), config["lr"], weight_decay = config['weight_decay'])
+
+    # Pos weights for each dataset distribution
+    #It is calculated according to the dataset training distribution
+    if config['pos_weight'] != 'none':
+
+        #PTBXL
+        if config['dataset'] == 'ptbxl':
+            pos_weight = [2,4,2,1,2]
+
+        elif config['dataset'] == 'cpsc18':
+            pos_weight = [ 2.37,  1.70,  3.10, 10.19,  1.0000,  3.69,  3.21,  2.52, 10.95]
+
+        elif config['dataset'] == 'hsm':
+            pos_weight = [3]
+
+        elif config['dataset'] == 'medalcare':
+            pos_weight = [9.91, 8.47, 8.90, 8.47, 9.91, 1.0000, 9.93, 9.91]
+
+        else:
+            raise Exception(f"Dataset {config['dataset']} not recognized for pos weights")
 
     if config['scheduler'] == "steplr":
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-    if config['pos_weight'] != 'none' and config['criterion'] == "bce_logits":
-        print('BCE with logits and pos weight')
-        pos_weight = torch.tensor(config['pos_weight'], dtype=torch.float32).to(args.device)
-        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    elif config['scheduler'] == "onecycle":
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config['sched_max_lr'], steps_per_epoch=len(train_loader), epochs=config['epochs'])
+
+    else:
+        scheduler = 'none'
+
+    #Criterion definition
+    if config['criterion'] == "bce_logits":
+        
+        if config['pos_weight'] != 'none':
+            print('BCE with logits and pos weight')
+            pos_weight = torch.tensor(pos_weight, dtype=torch.float32).to(config['device'])
+            criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        else:
+            print('BCE with logits and without pos weight')
+            criterion = nn.BCEWithLogitsLoss()
 
     elif config['criterion'] == "focal_loss":
         print('Focal Loss')
         criterion = "focal_loss"
+
+    elif config['criterion'] == "cross_entropy":
+
+        if config['pos_weight'] != 'none':
+            print('Cross Entropy Loss with pos weight')
+            pos_weight = torch.tensor(pos_weight, dtype=torch.float32).to(config['device'])
+            print('Pos weight: ', pos_weight)
+            criterion = nn.CrossEntropyLoss(weight=pos_weight)
+        else:
+            #Cross Entropy Loss without pos weight
+            print('Cross Entropy Loss without pos weight')
+            criterion = nn.CrossEntropyLoss()
 
     else:
         print('BCE with logits and without pos weight')
@@ -262,7 +308,7 @@ def objective(trial, config, args):
 
 
         #Update scheduler if one was chosen
-        if config['scheduler'] != 'none':
+        if config['scheduler'] != 'none' and config['scheduler'] != 'onecycle':
             scheduler.step()
 
         #Make the loop check what we are optimizing
@@ -282,7 +328,7 @@ if __name__ == '__main__':
     #Get hyperparameters
     args = argparse.Namespace(
         #yaml="/mnt/l/git_repositories/ECG_done_right/hyperparameters.yml",
-        yaml="path_to_hyperparameters.yml",
+        yaml="/hyperparameters.yml",
         device="cuda:0"
     )
 

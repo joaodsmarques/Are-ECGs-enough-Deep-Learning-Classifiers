@@ -24,13 +24,14 @@ from torch.utils.data import DataLoader,Dataset
 import sys
 import os
 from bs4 import BeautifulSoup
+import torch.nn.functional as F
 
 #All models we want to import
 import torch.nn.init as init
 from models import (AlexNet, 
                     vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn,vgg19_bn, vgg19 ,
                     resnet18, resnet34, resnet50, resnet101, resnet152,
-                    AttResNet, ECG_RNN, CRNN, ECG_Transformer_Encoder, ResTransformer)
+                    HSMnet, ECG_RNN, CRNN, ECG_Transformer_Encoder, ResTransformer, EEGNetModel)
 
 
 ##################################################
@@ -159,11 +160,14 @@ def get_ecg_labels(dataset):
     elif dataset == "hsm":
         return ['I','II','III','aVR','aVL','aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
     
+    elif dataset == "medalcare":
+        return ['I','II','III','aVR','aVL','aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+    
     elif dataset == "cpsc18":
         return ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
     
     else:
-        raise Exception("Not yet implemented! Only 'ptbxl' and 'hsm' are available.")
+        raise Exception("Not yet implemented! Only 'ptbxl', 'cpsc', 'medalcare' and 'hsm' are available.")
     
 
 #Loads the auxiliar documents and prepares the data_files containting the information needed for the dataloader
@@ -443,7 +447,7 @@ def get_ecg(input_path = "", test_flag = False, data_aug_flag = True, preprocess
 
     '''
     #all datasets are loaded the same way
-    if dataset_name == "ptbxl" or dataset_name == "hsm" or dataset_name == "cpsc18":
+    if dataset_name == "ptbxl" or dataset_name == "hsm" or dataset_name == "cpsc18" or dataset_name == "medalcare":
         #that is the way to load this type of data (default of ptb-xl dataset)
         
         record = wfdb.rdsamp(input_path)
@@ -452,7 +456,7 @@ def get_ecg(input_path = "", test_flag = False, data_aug_flag = True, preprocess
         df = pd.DataFrame(record[0],columns = record[1]["sig_name"])
 
     else:
-        raise Exception("Dataset not implemented! Try 'hsm', 'cpsc18' or 'ptbxl'.")
+        raise Exception("Dataset not implemented! Try 'hsm', 'cpsc18', 'ptbxl' or 'medalcare'.")
     
     #keep test set coherent between different runs
     if test_flag == False:
@@ -655,9 +659,9 @@ def choose_model(model_type, submodel, n_classes, config):
             raise Exception("Invalid submodel!! Not yet implemented, try the implemented ones.")
         
     #HSM-net model
-    elif model_type == "attresnet":
-        print("1D-Attention ResNet chosen")
-        model = AttResNet(config['n_leads'], n_classes, config['ecg_len'], resnet_type = config['resnet_type'], num_heads=8, reduction = config['reduction'])
+    elif model_type == "hsmnet":
+        print("HSMnet chosen")
+        model = HSMnet(config['n_leads'], n_classes, config['ecg_len'], resnet_type = config['resnet_type'], num_heads=8, reduction = config['reduction'])
 
     elif model_type == "rnn":
         print("RNN chosen")
@@ -698,6 +702,10 @@ def choose_model(model_type, submodel, n_classes, config):
                                 num_heads = config['num_heads'], 
                                 num_layers=config['enc_num_layers'], 
                                 enc_dropout = config['enc_dropout'])
+        
+    elif model_type == "eegnet": 
+        print("EEGNet chosen")
+        model = EEGNetModel(chans = config['n_leads'], classes = n_classes, time_points = config['ecg_len'], dropout_rate = config['dropout'])
 
     #The chosen model is not implemented
     else:
@@ -766,7 +774,8 @@ class ptbxl_Dataset(Dataset):
                  signal_len = 2048,
                  max_signal_len = 5000,
                  lead_labels = ["I"],
-                 dataset_name = "ptbxl" ):
+                 dataset_name = "ptbxl",
+                 dimensions = "1D" ):
         
       
         #All variables needed to be kept for this class
@@ -780,6 +789,7 @@ class ptbxl_Dataset(Dataset):
         self.leads_labels = lead_labels #the labels/tags for each lead of our ECG. 
                                         #only the labels given will be saved
         self.dataset_name = dataset_name
+        self.dimensions = dimensions    #1D or 2D, if 2D we will use the 12-lead ECG as a 2D image
 
 
         #Filters just the class columns one hot encoded
@@ -816,6 +826,8 @@ class ptbxl_Dataset(Dataset):
         #Plot the ecgs
         #plot_ecg(ecg_tensor, leads_to_plot=self.leads_labels, tags = self.leads_labels, sample_rate = 500)
         #sys.exit()
+        if self.dimensions == "2D":
+            ecg_tensor = ecg_tensor.unsqueeze(0)  # Add a channel dimension for 2D CNNs
         return (ecg_tensor, label_tensor) 
     
     def get_name(self):
@@ -833,7 +845,8 @@ class hsm_Dataset(Dataset):
                  signal_len = 2048,
                  max_signal_len = 5000,
                  lead_labels = ["I"],
-                 dataset_name = "ptbxl" ):
+                 dataset_name = "hsm",
+                 dimensions = "1D" ):
         
       
         #All variables needed to be kept for this class
@@ -846,7 +859,9 @@ class hsm_Dataset(Dataset):
         self.max_signal_len = max_signal_len
         self.leads_labels = lead_labels #the labels/tags for each lead of our ECG. 
                                         #only the labels given will be saved
+
         self.dataset_name = dataset_name
+        self.dimensions = dimensions    #1D or 2D, if 2D we will use the 12-lead ECG as a 2D image
 
         database = pd.read_csv(database_file_path, delimiter=';', names = ['filename', 'labels'])
 
@@ -883,7 +898,8 @@ class hsm_Dataset(Dataset):
                                     leads_labels = self.leads_labels, 
                                     dataset_name = self.dataset_name                                    
                                     )
-        
+        if self.dimensions == "2D":
+            ecg_tensor = ecg_tensor.unsqueeze(0)  # Add a channel dimension for 2D CNNs
         #Plot the ecgs
         #plot_ecg(ecg_tensor, leads_to_plot=self.leads_labels, tags = self.leads_labels, sample_rate = 500)
         
@@ -907,7 +923,8 @@ class CPSC18_Dataset(Dataset):
                  signal_len = 2048,
                  max_signal_len = 5000,
                  lead_labels = ["I"],
-                 dataset_name = "ptbxl" ):
+                 dataset_name = "cpsc18",
+                 dimensions = "1D" ):
         
       
         #All variables needed to be kept for this class
@@ -921,6 +938,7 @@ class CPSC18_Dataset(Dataset):
         self.leads_labels = lead_labels #the labels/tags for each lead of our ECG. 
                                         #only the labels given will be saved
         self.dataset_name = dataset_name
+        self.dimensions = dimensions    #1D or 2D, if 2D we will use the 12-lead ECG as a 2D image
         
         #Get all the labels
         self.labels = df_dataset.iloc[:, 1:-1]
@@ -955,7 +973,8 @@ class CPSC18_Dataset(Dataset):
                                     leads_labels = self.leads_labels, 
                                     dataset_name = self.dataset_name                                    
                                     )
-        
+        if self.dimensions == "2D":
+            ecg_tensor = ecg_tensor.unsqueeze(0)  # Add a channel dimension for 2D CNNs
         #Plot the ecgs
         #plot_ecg(ecg_tensor, leads_to_plot=self.leads_labels, tags = self.leads_labels, sample_rate = 500)
         
@@ -966,13 +985,94 @@ class CPSC18_Dataset(Dataset):
     
     def get_dataset_targets(self):
         return ['SNR', 'AF', 'IAVB', 'LBBB', 'RBBB', 'PAC', 'PVC', 'STD', 'STE']
+    
+#Dataset class for the cpsc dataset
+class MedalCareXL(Dataset):
+    
+    def __init__(self,
+                 dataset_path, database_file_path,  
+                 test = False, 
+                 data_aug = False, 
+                 norm = "none",
+                 pre_process = "none",
+                 signal_len = 2048,
+                 max_signal_len = 5000,
+                 lead_labels = ["I"],
+                 dataset_name = "medalcare",
+                 dimensions = "1D" ):
+        
+      
+        #All variables needed to be kept for this class
+        self.dataset_path = dataset_path       #dataset root dir
+        self.test = test                #if we are testing or training
+        self.data_aug = data_aug        #if we want to perform data augmentation
+        self.norm = norm                #if we want to apply normalization
+        self.pre_process = pre_process
+        self.signal_len = signal_len
+        self.max_signal_len = max_signal_len
+        self.leads_labels = lead_labels #the labels/tags for each lead of our ECG. 
+                                        #only the labels given will be saved
+        self.dataset_name = dataset_name
+
+        database = pd.read_csv(database_file_path, delimiter=',', names = ['file_name','class','label'], header = 0)
+
+        #column 2 has the labels for each sample - they are str format so we need to convert to int
+        self.labels = database[database.columns[2]].astype(int)
+
+        #column has the name of file for each sample
+        self.file_name = database[database.columns[0]]
+        self.ecg_path = ""
+
+        self.dimensions = dimensions
+
+        
+    #Get the len of the datasett
+    def __len__(self):
+        return len(self.labels)
+    
+    #Gets one item at a time from the dataframe
+    def __getitem__(self,idx):
+        
+        #Using iloc to access by position and not by index
+        #the filename ends with .xml, so we have to remove that part
+        self.ecg_path = os.path.join(self.dataset_path, str(self.file_name.iloc[idx]))
+
+
+        label_tensor = torch.tensor(int(self.labels.iloc[idx]))
+        label_tensor = F.one_hot(label_tensor, num_classes = 8).float()  # Convert to one-hot encoding for 8 classes
+        
+    
+        #Costly in time
+        ecg_tensor = get_ecg(input_path = self.ecg_path,
+                                    test_flag = self.test, 
+                                    data_aug_flag = self.data_aug,
+                                    preprocess = self.pre_process,
+                                    normalization = self.norm,
+                                    ecg_len = self.signal_len,
+                                    max_len = self.max_signal_len,
+                                    leads_labels = self.leads_labels, 
+                                    dataset_name = self.dataset_name                                    
+                                    )
+        if self.dimensions == "2D":
+            ecg_tensor = ecg_tensor.unsqueeze(0)  # Add a channel dimension for 2D CNNs
+        #Plot the ecgs
+        #plot_ecg(ecg_tensor, leads_to_plot=self.leads_labels, tags = self.leads_labels, sample_rate = 500)
+        
+        return (ecg_tensor, label_tensor) 
+    
+    def get_name(self):
+        return self.ecg_path
+    
+    
+    def get_dataset_targets(self):
+        return ['avblock', 'fam', 'iab', 'lae', 'lbbb', 'mi', 'rbbb', 'sinus']
 
 def pick_dataset(config):
 
     if config['dataset'] == "ptbxl":
         
         #Data locations
-        path_to_dataset = "/home/guests/jsm/ptblxl_dataset/"
+        path_to_dataset = "path-to-dataset/ptb-xl/"
 
         dataset = prepare_ptbxl_dataset (
                                             path_to_dataset = path_to_dataset,
@@ -1001,7 +1101,8 @@ def pick_dataset(config):
                                     signal_len = config['ecg_len'],
                                     max_signal_len = config['max_ecg_len'],
                                     lead_labels = leads_labels,
-                                    dataset_name=config['dataset'])
+                                    dataset_name=config['dataset'],
+                                    dimensions=config["dimensions"])
         
         val_set = ptbxl_Dataset(  path_to_dataset,
                                     df_val,  
@@ -1012,7 +1113,8 @@ def pick_dataset(config):
                                     signal_len = config['ecg_len'],
                                     max_signal_len = config['max_ecg_len'],
                                     lead_labels = leads_labels,
-                                    dataset_name=config['dataset'])
+                                    dataset_name=config['dataset'],
+                                    dimensions=config["dimensions"])
         
         test_set = ptbxl_Dataset(  path_to_dataset,
                                     df_test,  
@@ -1023,7 +1125,8 @@ def pick_dataset(config):
                                     signal_len = config['ecg_len'],
                                     max_signal_len = config['max_ecg_len'],
                                     lead_labels = leads_labels,
-                                    dataset_name=config['dataset'])
+                                    dataset_name=config['dataset'],
+                                    dimensions=config["dimensions"])
         
         return dataset, train_set, val_set, test_set
     
@@ -1032,7 +1135,7 @@ def pick_dataset(config):
         print('HSM dataset')
 
         #Data locations
-        root_path = "Path_To_Dataset"
+        root_path = "root-path"
         path_to_train = os.path.join(root_path, "all_train_wfdb/")
         path_to_test = os.path.join(root_path, "all_test_wfdb/")
         path_dbtrain_file = os.path.join(root_path,"labels_train_all_wfdb.csv")
@@ -1052,7 +1155,8 @@ def pick_dataset(config):
                                 signal_len = config['ecg_len'],
                                 max_signal_len = config['max_ecg_len'],
                                 lead_labels = leads_labels,
-                                dataset_name=config['dataset'])
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
         
 
         val_set =  hsm_Dataset(path_to_test, path_dbtest_file,
@@ -1063,7 +1167,8 @@ def pick_dataset(config):
                                 signal_len = config['ecg_len'],
                                 max_signal_len = config['max_ecg_len'],
                                 lead_labels = leads_labels,
-                                dataset_name=config['dataset'])
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
         
         test_set =  hsm_Dataset(path_to_test, path_dbtest_file,
                                 test = False, 
@@ -1073,7 +1178,8 @@ def pick_dataset(config):
                                 signal_len = config['ecg_len'],
                                 max_signal_len = config['max_ecg_len'],
                                 lead_labels = leads_labels,
-                                dataset_name=config['dataset'])
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
         
         #this is just needed in the main function to get the number of targets we are evaluating
         dummy_dataset = test_set
@@ -1085,8 +1191,8 @@ def pick_dataset(config):
         print('CPSC18 dataset')
         
         # Root directory for the dataset
-        path_to_data = "/home/guests/jsm/cpsc18_dataset/Training_WFDB"
-        path_db_file = "/home/guests/jsm/cpsc18_dataset/labels.csv"
+        path_to_data = "/cpsc18_dataset/Training_WFDB"
+        path_db_file = "/cpsc18_dataset/labels.csv"
 
         #Get the dataframe for the labels
         df_dataset = pd.read_csv(path_db_file)
@@ -1111,7 +1217,8 @@ def pick_dataset(config):
                                 signal_len = config['ecg_len'],
                                 max_signal_len = config['max_ecg_len'],
                                 lead_labels = leads_labels,
-                                dataset_name=config['dataset'])
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
         
 
         val_set =  CPSC18_Dataset(path_to_data, df_val,
@@ -1122,7 +1229,8 @@ def pick_dataset(config):
                                 signal_len = config['ecg_len'],
                                 max_signal_len = config['max_ecg_len'],
                                 lead_labels = leads_labels,
-                                dataset_name=config['dataset'])
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
         
         test_set =  CPSC18_Dataset(path_to_data, df_test,
                                 test = False, 
@@ -1132,15 +1240,70 @@ def pick_dataset(config):
                                 signal_len = config['ecg_len'],
                                 max_signal_len = config['max_ecg_len'],
                                 lead_labels = leads_labels,
-                                dataset_name=config['dataset'])
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
+        
+        #this is just needed in the main function to get the number of targets we are evaluating
+        dummy_dataset = test_set
+
+        return dummy_dataset, train_set, val_set, test_set
+    
+    elif config['dataset'] == "medalcare":
+        print('MedalCare dataset')
+
+        #Data locations
+        root_path = "/path-to-medalcare_XL"
+        path_to_train = os.path.join(root_path, "train")
+        path_to_test = os.path.join(root_path, "test")
+        path_dbtrain_file = os.path.join(root_path,"train_medalcare_labels.csv")
+        path_dbtest_file = os.path.join(root_path,"test_medalcare_labels.csv")
+
+        
+        
+        leads_labels = get_ecg_labels(config['dataset'])
+
+
+        print("Creating dataset")
+        train_set = MedalCareXL(path_to_train, path_dbtrain_file,
+                                test = False, 
+                                data_aug = config["data_aug"], 
+                                norm = config['norm'],
+                                pre_process= config['pre_process'],
+                                signal_len = config['ecg_len'],
+                                max_signal_len = config['max_ecg_len'],
+                                lead_labels = leads_labels,
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
+        
+
+        val_set =  MedalCareXL(path_to_test, path_dbtest_file,
+                                test = False, 
+                                data_aug = config["data_aug"], 
+                                norm = config['norm'],
+                                pre_process= config['pre_process'],
+                                signal_len = config['ecg_len'],
+                                max_signal_len = config['max_ecg_len'],
+                                lead_labels = leads_labels,
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
+        
+        test_set =  MedalCareXL(path_to_test, path_dbtest_file,
+                                test = False, 
+                                data_aug = config["data_aug"], 
+                                norm = config['norm'],
+                                pre_process= config['pre_process'],
+                                signal_len = config['ecg_len'],
+                                max_signal_len = config['max_ecg_len'],
+                                lead_labels = leads_labels,
+                                dataset_name=config['dataset'],
+                                dimensions=config["dimensions"])
         
         #this is just needed in the main function to get the number of targets we are evaluating
         dummy_dataset = test_set
 
         return dummy_dataset, train_set, val_set, test_set
 
-
     else:
-        raise Exception("Dataset not implemented! Try 'ptbxl', 'cpsc18' or 'hsm'.")
+        raise Exception("Dataset not implemented! Try 'ptbxl', 'cpsc18', 'medalcare' or 'hsm'.")
     
         

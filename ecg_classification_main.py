@@ -19,6 +19,7 @@ import argparse
 from tqdm import tqdm
 import torch.nn.init as init
 import torchvision
+import wandb
 
 
 ###########################################################
@@ -70,6 +71,10 @@ def train_1_epoch(model, optimizer, criterion, train_loader, device):
         optimizer.zero_grad() # zero the gradient buffers
         loss.backward()
         optimizer.step() # Does the update
+
+        #If a scheduler was chosen, step it
+        if config['scheduler'] == "onecycle":
+            scheduler.step()
 
         #Add batch loss to
         epoch_loss.append(loss.item())
@@ -140,11 +145,25 @@ def evaluate(model, criterion, eval_loader, class_threshold, device):
 
 if __name__ == '__main__':
 
+    #Parse arguments
+    parser = argparse.ArgumentParser(description='Train a model for ECGs classification')
+    parser.add_argument('--wandb', dest='wandb', action='store_true', help='Enable wandb logging')
+
+
+    run_args = parser.parse_args()
+
+    if run_args.wandb: 
+        #Finish wandb
+        wandb.finish()
+
+        wandb_key = 'wandb-key'
+        # start a new wandb run to track this script
+        wandb.login(key = wandb_key)
+
     #Get hyperparameters
     args = argparse.Namespace(
         #yaml="/mnt/l/git_repositories/ECG_done_right/hyperparameters.yml",
-        yaml="PATH_TO_hyperparameters.yml",
-        device="cuda:0"
+        yaml="/hyperparameters.yml"
     )
 
     #open yaml args
@@ -152,21 +171,20 @@ if __name__ == '__main__':
         config = yaml.safe_load(f)
 
     
-    checkpoint = torch.load("/home/guests/jsm/miccai_code/model_pths/ptbxl_crnn_gru.pth", map_location="cpu")
-
-    config = checkpoint['config']
-    config['dataset'] = "hsm"
-    config['pos_weight'] = "none"
-    config['criterion'] = 'focal_loss'
-    config['normalization'] = 'l2'
-    config['epochs'] = 50
-    config['save_model'] = False
-    print(config)
-    
-    #sys.exit()
-    
     #Setting seed in order to replicate experiments
     set_seed(config['seed'])
+
+    #WandB configurations
+    if run_args.wandb:
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="Mirasol paper",
+            name = f"{config['dataset']}-{config['model_type']}-{config['submodel']}-{config['resnet_type']}-n_layers:{config['rnn_layers']}-h_size:{config['rnn_hidden_size']}",
+            tags=["resnet+encoder"],
+            
+            # Wandb config is our yaml config
+            config = config
+        )
         
     print('Starting...')
 
@@ -225,32 +243,80 @@ if __name__ == '__main__':
     
     # Transfer model to gpu
     if torch.cuda.is_available():
-        model.to(args.device)
-    
+        model.to(config['device'])
+
     #Loss and optimizer definitions
-    optimizer = torch.optim.AdamW(model.parameters(), config["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), config["lr"], weight_decay = config['weight_decay'])
+
+    # Pos weights for each dataset distribution
+    #It is calculated according to the dataset training distribution
+    if config['pos_weight'] != 'none':
+
+        #PTBXL
+        if config['dataset'] == 'ptbxl':
+            pos_weight = [2,4,2,1,2]
+
+        elif config['dataset'] == 'cpsc18':
+            pos_weight = [ 2.37,  1.70,  3.10, 10.19,  1.0000,  3.69,  3.21,  2.52, 10.95]
+
+        elif config['dataset'] == 'hsm':
+            pos_weight = [3]
+
+        elif config['dataset'] == 'medalcare':
+            pos_weight = [9.91, 8.47, 8.90, 8.47, 9.91, 1.0000, 9.93, 9.91]
+
+        else:
+            raise Exception(f"Dataset {config['dataset']} not recognized for pos weights")
 
     if config['scheduler'] == "steplr":
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-    if config['pos_weight'] != 'none' and config['criterion'] == "bce_logits":
-        print('BCE with logits and pos weight')
-        pos_weight = torch.tensor(config['pos_weight'], dtype=torch.float32).to(args.device)
-        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    elif config['scheduler'] == "onecycle":
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config['sched_max_lr'], steps_per_epoch=len(train_loader), epochs=config['epochs'])
+
+    else:
+        scheduler = 'none'
+
+    #Criterion definition
+    if config['criterion'] == "bce_logits":
+        
+        if config['pos_weight'] != 'none':
+            print('BCE with logits and pos weight')
+            pos_weight = torch.tensor(pos_weight, dtype=torch.float32).to(config['device'])
+            criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        else:
+            print('BCE with logits and without pos weight')
+            criterion = nn.BCEWithLogitsLoss()
 
     elif config['criterion'] == "focal_loss":
         print('Focal Loss')
         criterion = "focal_loss"
 
+    elif config['criterion'] == "cross_entropy":
+
+        if config['pos_weight'] != 'none':
+            print('Cross Entropy Loss with pos weight')
+            pos_weight = torch.tensor(pos_weight, dtype=torch.float32).to(config['device'])
+            print('Pos weight: ', pos_weight)
+            criterion = nn.CrossEntropyLoss(weight=pos_weight)
+        else:
+            #Cross Entropy Loss without pos weight
+            print('Cross Entropy Loss without pos weight')
+            criterion = nn.CrossEntropyLoss()
+
     else:
         print('BCE with logits and without pos weight')
         criterion = nn.BCEWithLogitsLoss()
 
-    print('Dataset length: ', len(train_loader.dataset))
+    #Check model
+    if run_args.wandb:
+        wandb.watch(model, criterion, log = "all", log_freq = 10)
 
+    print('Dataset length: ', len(train_loader.dataset))
 
     max_f1 = 0
 
+    # TRAINING LOOP
     #Loop over epochs
     for epoch in tqdm(range(config['epochs'])):
 
@@ -259,19 +325,34 @@ if __name__ == '__main__':
         eval_loss = []
 
         #Train for 1 epoch
-        epoch_loss = train_1_epoch(model, optimizer, criterion, train_loader, args.device)
+        epoch_loss = train_1_epoch(model, optimizer, criterion, train_loader, config['device'])
         training_loss.append(epoch_loss)
 
         print('Training Loss: %.6f'%epoch_loss)
+        
+        #Follow training loss
+        if run_args.wandb:
+            wandb.log({"training loss": epoch_loss})
+
         #Evaluate the model on the validation set
         # val loss: mean loss during eval
         # predictions: Network output round to 0 or 1. n_samples x n_classes
         # labels: targets n_samples x n_classes
-        val_loss, predictions, labels, probs = evaluate(model, criterion, test_loader,config['class_threshold'], args.device)
+        val_loss, predictions, labels, probs = evaluate(model, criterion, test_loader,config['class_threshold'], config['device'])
 
         print('Eval loss: %.6f'% val_loss)
+
+        #Log the eval loss
+        if run_args.wandb:
+            wandb.log({"eval loss": val_loss})
+
         #Receives predictions, targets, probabilities, the tags for each class and the mode - print or return
         metrics = ut.get_metrics(predictions, labels, probs, dataset.get_dataset_targets(), 'print')
+
+        #Log all metrics
+        if run_args.wandb:
+            wandb.log(metrics)
+            wandb.log({'epoch': epoch})
 
         #save model if it is the best one
         if config['save_model']:
@@ -287,10 +368,16 @@ if __name__ == '__main__':
                         }, pth_path)
 
         #Update scheduler if one was chosen
-        if config['scheduler'] != 'none':
+        if config['scheduler'] != 'none' and config['scheduler'] != 'onecycle':
             scheduler.step()
+
+        if run_args.wandb and config['scheduler'] != 'none':
+            wandb.log({'learning_rate': scheduler.get_last_lr()[0]})
 
 
     #Finishi
     print('Run finished!')
     
+    #Finish wandb
+    if run_args.wandb:
+        wandb.finish()
