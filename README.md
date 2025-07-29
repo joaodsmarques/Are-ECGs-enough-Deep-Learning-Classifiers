@@ -21,7 +21,7 @@ The pipeline follows the settings in `hyperparameters.yml`:
 
 We use 4 datasets for this research [PTB-XL](https://physionet.org/content/ptb-xl/1.0.3/), [CPSC-2018](http://2018.icbeb.org/Challenge.html), [MedalCare-XL](https://www.nature.com/articles/s41597-023-02416-4) and [PE-HSM](https://doi.org/10.1016/j.repc.2023.03.016). you can run them by changing `dataset` parameter to 'ptbxl', 'cpsc18', 'medalcare' or 'hsm'.
 
-![GitHub Logo](images/datasets.png)
+![GitHub Logo](images/dataset_distribution.png)
 
 
 Although the paper did not explore the PTB-XL dataset for the sub-class, form or rhythm problems, you can run this code for those tasks by setting the `set` to either 'diagnostic', 'form' or 'rhythm' and the `subset` to 'superclass', 'subclass' or 'all'. Note that the `subset` is only used for the diagnostic problem, not for `rhythm` or `form`.
