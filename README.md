@@ -31,6 +31,7 @@ You need to define your hyperparameters.yml, paste the correspondent path in the
 
 ```bash
 python3 ecg_classification_main.py --wandb
+```
 Note: Make sure to add your Weights & Biases (wandb) API key in the main code or configure it using wandb login.
 The file `utils.py` contains all the auxiliar code.
 
