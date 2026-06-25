@@ -39,16 +39,20 @@ The file `utils.py` contains all the auxiliar code.
 If you find this work useful, please consider citing our paper:
 
 ```bibtex
-@misc{marques_are_ecgs_enough_2025,
-      title={Are ECGs enough? Deep learning classification of pulmonary embolism using electrocardiograms}, 
-      author={Joao D. S. Marques and Arlindo L. Oliveira},
-      year={2025},
-      eprint={2503.08960},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2503.08960}, 
-}
-```
+@inproceedings{MarquesOliveira2026,
+  author    = {Marques, J. D. S. and Oliveira, A. L.},
+  title     = {Are ECGs Enough? Deep Learning Classification of Pulmonary Embolism Using Electrocardiograms},
+  booktitle = {Medical Image Computing in Resource Constrained Settings},
+  editor    = {Anazodo, U. and Zhang, D. and Raymond, C. and Kurt, M. and Lekadir, K. and Crimi, A.},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {16398},
+  pages     = {1--13},
+  publisher = {Springer},
+  address   = {Cham},
+  year      = {2026},
+  doi       = {10.1007/978-3-032-13654-1_1},
+  url       = {https://doi.org/10.1007/978-3-032-13654-1_1}
+}`
 
 
 
